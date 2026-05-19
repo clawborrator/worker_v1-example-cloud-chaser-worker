@@ -27,18 +27,21 @@ hands control to the playbook in its `CLAUDE.md`.
 
 ## Setup (one time, on each server)
 
-### 1. Mint a clawborrator channel token
+### 1. Confirm `~/.clawborrator-spawn.env` exists on the host
 
-From your laptop (any host that has `claw` installed):
+Every clawborrator worker on this host shares one env file at
+`~/.clawborrator-spawn.env`. It must contain:
 
-```bash
-claw token mint --name cloud-chaser-$(hostname)
+```
+CLAUDE_CODE_OAUTH_TOKEN=<from `claude setup-token`>
+CLAWBORRATOR_TOKEN=<from `npx clawborrator-cli token mint --name cloud-chaser-$(hostname)`>
+CLAWBORRATOR_HUB_URL=wss://next.clawborrator.com
 ```
 
-Copy the `ck_live_…` value. Mint a separate token per server so
-revocation is granular. Run that command FROM the server so the
-token's display name matches the server it'll be used on, or just
-substitute the hostname manually.
+If you've already brought up any other clawborrator worker on this
+host, this file is in place — skip ahead. If not, mint a channel
+token (separate per server for granular revocation) and write the
+file before continuing.
 
 ### 2. Create a GitHub PAT for the audit log
 
@@ -60,11 +63,11 @@ $EDITOR .env
 
 Fill in:
 
-- `CLAUDE_CODE_OAUTH_TOKEN`
-- `CLAWBORRATOR_TOKEN`
 - `REPO_PAT`, `GIT_USER_EMAIL`, `GIT_USER_NAME`
 
-Defaults are fine for everything else.
+Defaults are fine for everything else. `CLAUDE_CODE_OAUTH_TOKEN`
+and `CLAWBORRATOR_TOKEN` come from `~/.clawborrator-spawn.env`
+(loaded first by docker-compose) — don't duplicate them here.
 
 You do NOT set the server name. The agent auto-derives it from
 the host's kernel hostname (`/etc/hostname`) at the start of every

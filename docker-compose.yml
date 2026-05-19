@@ -27,7 +27,17 @@ services:
     image:          ladder99/clawborrator-worker:latest
     container_name: cloud-chaser-${SERVER_NAME_OVERRIDE:-${HOSTNAME:-unnamed}}
     hostname:       cloud-chaser-${SERVER_NAME_OVERRIDE:-${HOSTNAME:-unnamed}}
-    env_file:       .env
+    # Two env files, loaded in order. Later wins on conflicts.
+    #   1. ~/.clawborrator-spawn.env — shared CC + clawborrator
+    #      auth that every clawborrator worker on this host uses
+    #      (CLAUDE_CODE_OAUTH_TOKEN, CLAWBORRATOR_TOKEN,
+    #      CLAWBORRATOR_HUB_URL). Provisioned once per host by the
+    #      operator. Missing-file = compose fails clearly.
+    #   2. .env — cloud-chaser-specific config (REPO_URL, REPO_PAT,
+    #      GIT identity, NOTIFY_PEER, etc.). Copy from .env.example.
+    env_file:
+      - ${HOME}/.clawborrator-spawn.env
+      - .env
     environment:
       # Routing name on the hub follows the same derivation: the
       # operator's $HOSTNAME at compose-up time, unless overridden.
