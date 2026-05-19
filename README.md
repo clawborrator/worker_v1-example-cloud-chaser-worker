@@ -25,6 +25,135 @@ https://github.com/clawborrator/worker_v1-example-cloud-chaser-repo
 `docker compose up` clones that repo into `/workspace/repo` and
 hands control to the playbook in its `CLAUDE.md`.
 
+## Brand-new host bootstrap (do this once per server)
+
+Before the cloud-chaser worker can come up via the fleet-rollout
+pattern, the target server needs:
+
+1. Claude Code installed on the host (so the supervisor can spawn
+   sessions).
+2. Node + npm on PATH (the supervisor's spawned CC processes invoke
+   `clawborrator-mcp` via `npx`).
+3. The clawborrator supervisor daemon, logged in and running as a
+   systemd user service.
+4. One initial Claude Code session ("master session") spawned via
+   the supervisor and registered as a peer on the hub. This is the
+   session your laptop's master session (e.g. `@clauderemote`) will
+   route deployment prompts to.
+
+Same procedure as orchard-chat's "set up another supervisor" wizard,
+captured here as shell-only commands.
+
+### 0a. Prereqs on the host
+
+```bash
+curl -fsSL https://claude.ai/install.sh | bash && claude setup-token
+sudo apt install -y nodejs npm    # debian / ubuntu; dnf on fedora / rhel
+which claude npx                  # verify both are on PATH
+```
+
+Without `claude` on PATH, session-create later fails with
+`502: spawning claude`. Without `npx`, the MCP server inside each
+spawned CC session hangs.
+
+### 0b. Download the supervisor binary
+
+```bash
+curl -fsSL -o clawborrator-supervisor-linux-x64 \
+  https://github.com/clawborrator/desktop_v1/releases/latest/download/clawborrator-supervisor-linux-x64
+chmod +x clawborrator-supervisor-linux-x64
+```
+
+### 0c. Log the daemon in
+
+```bash
+./clawborrator-supervisor-linux-x64 --hub-url=https://next.clawborrator.com login
+```
+
+Opens GitHub OAuth in a browser. On a headless server, the binary
+prints a URL you open from any browser on a workstation you're
+signed into; it persists the token to `~/.clawborrator/cfg.toml`,
+then exits. **No daemon is running yet.**
+
+### 0d. Enable lingering, then install the systemd user unit
+
+```bash
+sudo loginctl enable-linger "$USER"
+./clawborrator-supervisor-linux-x64 install-task
+```
+
+`enable-linger` starts your user systemd manager (creates
+`/run/user/<uid>`), which `install-task` needs to talk to AND makes
+the service start at boot before any user login. supervisor 0.3.3+
+auto-discovers `XDG_RUNTIME_DIR` after linger is set, so
+`install-task` Just Works without a re-login.
+
+`install-task` writes `~/.config/systemd/user/clawborrator-supervisor.service`,
+runs `systemctl --user daemon-reload`, and enables the unit. No
+root needed past the `enable-linger` step.
+
+### 0e. Start the daemon
+
+```bash
+systemctl --user start clawborrator-supervisor
+journalctl --user -u clawborrator-supervisor -f
+```
+
+The journal tail confirms the daemon's outbound WebSocket to the
+hub is up (`registered desktop machineId=…`). Ctrl-C exits the tail;
+the daemon keeps running.
+
+### 0f. Verify on the hub + spawn the initial master session
+
+From orchard-chat (https://next.clawborrator.com), the new desktop
+appears in the sidebar with hostname + version. Click "+ Session"
+to spawn the host's first managed CC session.
+
+The CLI equivalent (if you'd rather stay in a terminal on your
+laptop):
+
+```bash
+npx -y clawborrator-cli desktops ls
+npx -y clawborrator-cli session create --desktop=<machine-id> --name=manager-$(hostname)
+```
+
+That `manager-<hostname>` session is the peer your local master
+session will route prompts to (see "Fleet rollout via clawborrator
+peer routing" below). Verify it shows up:
+
+```bash
+npx -y clawborrator-cli peers ls    # should list @manager-<hostname>
+```
+
+### 0g. Write `~/.clawborrator-spawn.env` on the host
+
+The shared spawn env file that every per-host worker reads. Create
+it from the master session you just spawned (or via SSH if you'd
+rather):
+
+```bash
+cat > ~/.clawborrator-spawn.env <<'EOF'
+CLAUDE_CODE_OAUTH_TOKEN=<from `claude setup-token` output above>
+CLAWBORRATOR_TOKEN=<from `npx clawborrator-cli token mint --name cloud-chaser-$(hostname)`>
+CLAWBORRATOR_HUB_URL=wss://next.clawborrator.com
+REPO_PAT=<GitHub PAT, repo scope>
+GIT_USER_EMAIL=<your email>
+GIT_USER_NAME=<your name>
+EOF
+chmod 600 ~/.clawborrator-spawn.env
+```
+
+This is one file, used by every clawborrator worker on this host.
+The cloud-chaser worker's local `.env` references nothing secret;
+everything sensitive lives here.
+
+---
+
+The host is now bootstrapped. From your laptop's master session you
+can route the cloud-chaser deployment prompt to `@manager-<hostname>`
+(see "Fleet rollout via clawborrator peer routing" below) without
+ever SSHing in again.
+
 ## Setup (one time, on each server)
 
 ### 1. Confirm `~/.clawborrator-spawn.env` exists on the host
