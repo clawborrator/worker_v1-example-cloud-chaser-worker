@@ -75,22 +75,34 @@ prints a URL you open from any browser on a workstation you're
 signed into; it persists the token to `~/.clawborrator/cfg.toml`,
 then exits. **No daemon is running yet.**
 
-### 0d. Enable lingering, then install the systemd user unit
+### 0d. Install the systemd user unit, then enable lingering
 
 ```bash
-sudo loginctl enable-linger "$USER"
 ./clawborrator-supervisor-linux-x64 install-task
+sudo loginctl enable-linger "$USER"
 ```
-
-`enable-linger` starts your user systemd manager (creates
-`/run/user/<uid>`), which `install-task` needs to talk to AND makes
-the service start at boot before any user login. supervisor 0.3.3+
-auto-discovers `XDG_RUNTIME_DIR` after linger is set, so
-`install-task` Just Works without a re-login.
 
 `install-task` writes `~/.config/systemd/user/clawborrator-supervisor.service`,
 runs `systemctl --user daemon-reload`, and enables the unit. No
-root needed past the `enable-linger` step.
+root needed. It works as long as `/run/user/<uid>` exists, which
+happens automatically on most distros when your SSH session starts
+(pam_systemd creates it). supervisor 0.3.3+ auto-discovers
+`XDG_RUNTIME_DIR` from `/run/user/<uid>` when the parent shell
+didn't export it.
+
+**If `install-task` fails with `No medium found` or
+`Failed to connect to bus`**, your SSH session didn't start the user
+manager (some minimal server installs ship a stripped PAM stack).
+Fix: run `sudo loginctl enable-linger "$USER"` FIRST, re-login, then
+re-run `install-task`.
+
+`enable-linger` after install is the headless-persistence step. It:
+
+- starts your user systemd manager perpetually (survives logouts)
+- starts the service at boot, before any user login
+
+Without it, the daemon stops when you SSH out and doesn't come back
+until you log in again. For a fleet daemon you want this.
 
 ### 0e. Start the daemon
 
