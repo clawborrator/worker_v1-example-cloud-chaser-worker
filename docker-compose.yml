@@ -1,0 +1,57 @@
+# worker_v1-example-cloud-chaser-worker — docker-compose for the
+# cloud-chaser agent example.
+#
+# Pulls the agent code (CLAUDE.md + specialists/) from the sibling
+# repo via REPO_URL in .env:
+#   https://github.com/clawborrator/worker_v1-example-cloud-chaser-repo
+#
+# Multi-instance, single-repo. Every server runs the SAME image
+# with the SAME REPO_URL. Server identity comes from the host's
+# kernel hostname (read from /etc/hostname at compose-time via
+# $HOSTNAME, and from /host/etc/hostname at agent-runtime). No
+# per-host .env edits are required for identity.
+#
+#   1. Fill in .env (copy from .env.example) — no SERVER_NAME needed
+#   2. docker compose up -d
+#   3. docker compose logs -f
+#   4. docker compose down
+#
+# To override the auto-derived hostname (e.g. you'd rather see
+# "prod1" than "ip-10-0-1-23"), set SERVER_NAME_OVERRIDE in .env.
+#
+# Image is ladder99/clawborrator-worker:latest — no Playwright needed.
+# Pulled from Docker Hub; no local build.
+
+services:
+  cloud-chaser:
+    image:          ladder99/clawborrator-worker:latest
+    container_name: cloud-chaser-${SERVER_NAME_OVERRIDE:-${HOSTNAME:-unnamed}}
+    hostname:       cloud-chaser-${SERVER_NAME_OVERRIDE:-${HOSTNAME:-unnamed}}
+    env_file:       .env
+    environment:
+      # Routing name on the hub follows the same derivation: the
+      # operator's $HOSTNAME at compose-up time, unless overridden.
+      # The agent itself re-reads /host/etc/hostname inside the
+      # container for SERVER_NAME used in commit paths.
+      CLAWBORRATOR_ROUTING_NAME: cloud-chaser-${SERVER_NAME_OVERRIDE:-${HOSTNAME:-unnamed}}
+    restart:        unless-stopped
+    stdin_open:     true
+    tty:            true
+    # The agent reads system + docker state from the HOST via these
+    # read-only mounts. The agent never writes to the host filesystem.
+    volumes:
+      # Docker socket — host's docker, not the container's own.
+      # Read-only at the kernel level (the docker API still issues
+      # POSTs for some read calls, but the bind blocks writes).
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # /proc — loadavg, meminfo, diskstats, kernel hostname.
+      - /proc:/host/proc:ro
+      # /sys — cpu count, block device info.
+      - /sys:/host/sys:ro
+      # /var/log — syslog / journal source for kernel + systemd
+      # errors. Bind whichever path your distro uses; the collect
+      # script checks for both syslog and journal layouts.
+      - /var/log:/host/var/log:ro
+      # /etc/hostname — the agent's source of truth for SERVER_NAME
+      # at runtime. Read every cycle so the value can't drift.
+      - /etc/hostname:/host/etc/hostname:ro
