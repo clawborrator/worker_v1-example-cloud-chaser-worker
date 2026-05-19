@@ -28,13 +28,15 @@ services:
     container_name: cloud-chaser-${SERVER_NAME_OVERRIDE:-${HOSTNAME:-unnamed}}
     hostname:       cloud-chaser-${SERVER_NAME_OVERRIDE:-${HOSTNAME:-unnamed}}
     # Two env files, loaded in order. Later wins on conflicts.
-    #   1. ~/.clawborrator-spawn.env — shared CC + clawborrator
-    #      auth that every clawborrator worker on this host uses
+    #   1. ~/.clawborrator-spawn.env — every secret on this host
     #      (CLAUDE_CODE_OAUTH_TOKEN, CLAWBORRATOR_TOKEN,
-    #      CLAWBORRATOR_HUB_URL). Provisioned once per host by the
-    #      operator. Missing-file = compose fails clearly.
-    #   2. .env — cloud-chaser-specific config (REPO_URL, REPO_PAT,
-    #      GIT identity, NOTIFY_PEER, etc.). Copy from .env.example.
+    #      CLAWBORRATOR_HUB_URL, REPO_PAT, GIT_USER_EMAIL,
+    #      GIT_USER_NAME). Provisioned once per host by the
+    #      operator; shared across all clawborrator workers.
+    #      Missing-file = compose fails clearly.
+    #   2. .env — cloud-chaser-specific config (REPO_URL,
+    #      NOTIFY_PEER, optional SERVER_NAME_OVERRIDE). Zero
+    #      secrets, zero per-host edits required by default.
     env_file:
       - ${HOME}/.clawborrator-spawn.env
       - .env

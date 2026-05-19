@@ -30,57 +30,42 @@ hands control to the playbook in its `CLAUDE.md`.
 ### 1. Confirm `~/.clawborrator-spawn.env` exists on the host
 
 Every clawborrator worker on this host shares one env file at
-`~/.clawborrator-spawn.env`. It must contain:
+`~/.clawborrator-spawn.env`. All secrets live there — the
+per-worker `.env` has zero secrets and zero per-host edits. The
+file must contain:
 
 ```
 CLAUDE_CODE_OAUTH_TOKEN=<from `claude setup-token`>
 CLAWBORRATOR_TOKEN=<from `npx clawborrator-cli token mint --name cloud-chaser-$(hostname)`>
 CLAWBORRATOR_HUB_URL=wss://next.clawborrator.com
+REPO_PAT=<GitHub PAT, repo scope, for git push>
+GIT_USER_EMAIL=<your email>
+GIT_USER_NAME=<your name>
 ```
 
 If you've already brought up any other clawborrator worker on this
-host, this file is in place — skip ahead. If not, mint a channel
-token (separate per server for granular revocation) and write the
-file before continuing.
+host, this file is in place — verify the new fields are present
+and add the missing ones. If not, create it before continuing.
 
-### 2. Create a GitHub PAT for the audit log
+GitHub PAT generation: Settings → Developer settings → Personal
+access tokens → Tokens (classic) → Generate new token, repo scope.
+Same PAT can be reused across servers.
 
-The agent commits `data/<server-name>/<timestamp>.json` to its repo
-every hour AND regenerates `public/index.html`. Needs `repo` scope.
-Generate at:
-
-GitHub → Settings → Developer settings → Personal access tokens →
-Tokens (classic) → Generate new token
-
-The same PAT can be reused across servers (it's just for git push).
-
-### 3. Configure .env
+### 2. Configure .env (no edits required)
 
 ```bash
 cp .env.example .env
-$EDITOR .env
 ```
 
-Fill in:
+That's it. The defaults in `.env.example` are valid out of the
+box. No editing required unless:
 
-- `REPO_PAT`, `GIT_USER_EMAIL`, `GIT_USER_NAME`
+- you want a different notification target (`NOTIFY_PEER=`)
+- the kernel hostname isn't a good slug (e.g. AWS gives you
+  `ip-10-0-1-23`) and you'd rather see `prod1` in the dashboard:
+  set `SERVER_NAME_OVERRIDE=prod1`
 
-Defaults are fine for everything else. `CLAUDE_CODE_OAUTH_TOKEN`
-and `CLAWBORRATOR_TOKEN` come from `~/.clawborrator-spawn.env`
-(loaded first by docker-compose) — don't duplicate them here.
-
-You do NOT set the server name. The agent auto-derives it from
-the host's kernel hostname (`/etc/hostname`) at the start of every
-cycle, and docker-compose picks up `$HOSTNAME` from your shell for
-the container_name + hub routing name. The same .env can be
-deployed across the fleet unchanged.
-
-If the kernel hostname isn't a good slug (e.g. AWS gives you
-`ip-10-0-1-23` and you'd rather see `prod1` in the dashboard), set
-`SERVER_NAME_OVERRIDE=prod1` in .env. Otherwise leave it commented
-out.
-
-### 4. Start
+### 3. Start
 
 ```bash
 export HOSTNAME=$(hostname)
@@ -99,7 +84,7 @@ Setting it explicitly avoids that cosmetic mismatch.
 First warmup cycle runs in ~30-60s. After that, `CronCreate
 0 * * * *` paces hourly cycles (top of every hour).
 
-### 5. Open the dashboard
+### 4. Open the dashboard
 
 After the first push, the dashboard lives at:
 
